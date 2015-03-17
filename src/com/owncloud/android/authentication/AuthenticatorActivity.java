@@ -106,6 +106,8 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
     private static final String KEY_AUTH_TOKEN_TYPE = "AUTH_TOKEN_TYPE";
 
     private static final String KEY_HOST_URL_TEXT = "HOST_URL_TEXT";
+    private static final String KEY_LOOKUP_URL_TEXT = "LOOKUP_URL_TEXT";
+    private static final String KEY_USERNAME_TEXT = "USERNAME_TEXT";
     private static final String KEY_OC_VERSION = "OC_VERSION";
     private static final String KEY_SERVER_VALID = "SERVER_VALID";
     private static final String KEY_SERVER_CHECKED = "SERVER_CHECKED";
@@ -161,6 +163,9 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
 
     private GetServerInfoOperation.ServerInfo mServerInfo = 
             new GetServerInfoOperation.ServerInfo();
+
+    // when lookup URL is set, use this to detect changes to username
+    private String mUsername = "";
     
     
     /// Authentication PRE-Fragment elements 
@@ -334,7 +339,11 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
                 }
             } else {
                 mServerInfo.mBaseUrl = getString(R.string.server_url).trim();
-                mServerInfo.mIsSslConn = mServerInfo.mBaseUrl.startsWith("https://");
+                mServerInfo.mLookupUrl = getString(R.string.server_lookup_url).trim();
+                if ( !mServerInfo.mLookupUrl.isEmpty() )
+                    mServerInfo.mIsSslConn = mServerInfo.mLookupUrl.startsWith("https://");
+                else
+                    mServerInfo.mIsSslConn = mServerInfo.mBaseUrl.startsWith("https://");
             }
         } else {
             mServerStatusText = savedInstanceState.getInt(KEY_SERVER_STATUS_TEXT);
@@ -346,6 +355,8 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
             // TODO parcelable
             mServerInfo.mIsSslConn = savedInstanceState.getBoolean(KEY_IS_SSL_CONN);
             mServerInfo.mBaseUrl = savedInstanceState.getString(KEY_HOST_URL_TEXT);
+            mServerInfo.mLookupUrl = savedInstanceState.getString(KEY_LOOKUP_URL_TEXT);
+            mUsername = savedInstanceState.getString(KEY_USERNAME_TEXT);
             String ocVersion = savedInstanceState.getString(KEY_OC_VERSION);
             if (ocVersion != null) {
                 mServerInfo.mVersion = new OwnCloudVersion(ocVersion);
@@ -359,6 +370,7 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
         mHostUrlInput = (EditText) findViewById(R.id.hostUrlInput);
         // Convert IDN to Unicode
         mHostUrlInput.setText(DisplayUtils.convertIdn(mServerInfo.mBaseUrl, false));
+        mUsernameInput.setText(DisplayUtils.convertIdn(mUsername, false));
         if (mAction != ACTION_CREATE) {
             /// lock things that should not change
             mHostUrlInput.setEnabled(false);
@@ -567,6 +579,8 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
         outState.putBoolean(KEY_SERVER_VALID, mServerIsValid);
         outState.putBoolean(KEY_IS_SSL_CONN, mServerInfo.mIsSslConn);
         outState.putString(KEY_HOST_URL_TEXT, mServerInfo.mBaseUrl);
+        outState.putString(KEY_LOOKUP_URL_TEXT, mServerInfo.mLookupUrl);
+        outState.putString(KEY_USERNAME_TEXT, mUsername);
         if (mServerInfo.mVersion != null) {
             outState.putString(KEY_OC_VERSION, mServerInfo.mVersion.getVersion());
         }
@@ -703,9 +717,11 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
 
         } else if (view.getId() == R.id.account_password) {
             onPasswordFocusChanged((TextView) view, hasFocus);
+        } else if (view.getId() == R.id.account_username && !mServerInfo.mLookupUrl.isEmpty() ) {
+            if (!hasFocus && !mUsernameInput.getText().toString().equals(mUsername))
+                checkOcServer();
         }
     }
-
 
     /**
      * Handles changes in focus on the text input for the server URL.
@@ -729,7 +745,6 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
         }
     }
 
-
     private void checkOcServer() {
         String uri = mHostUrlInput.getText().toString().trim();
         mServerIsValid = false;
@@ -750,6 +765,14 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
             getServerInfoIntent.putExtra(
                 OperationsService.EXTRA_SERVER_URL, 
                 normalizeUrlSuffix(uri)
+            );
+            getServerInfoIntent.putExtra(
+                OperationsService.EXTRA_LOOKUP_URL, 
+                normalizeUrlSuffix(mServerInfo.mLookupUrl)
+            );
+            getServerInfoIntent.putExtra(
+                OperationsService.EXTRA_LOOKUP_USERNAME, 
+                mUsernameInput.getText().toString()
             );
             if (mOperationsServiceBinder != null) {
                 mWaitingForOpId = mOperationsServiceBinder.queueNewOperation(getServerInfoIntent);
