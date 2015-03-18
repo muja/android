@@ -53,8 +53,6 @@ public class GetServerInfoOperation extends RemoteOperation {
     private static final String TAG = GetServerInfoOperation.class.getSimpleName();
     
     private String mUrl;
-    private String mLookupUrl;
-    private String mLookupUsername;
     private Context mContext;
     
     private ServerInfo mResultData;
@@ -66,11 +64,9 @@ public class GetServerInfoOperation extends RemoteOperation {
      * @param context           Android context; needed to check network state
      *                          TODO ugly dependency, get rid of it. 
      */
-    public GetServerInfoOperation(String url, String lookup, String username, Context context) {
+    public GetServerInfoOperation(String url, Context context) {
         mUrl = trimWebdavSuffix(url);
         mContext = context;
-        mLookupUrl = lookup;
-        mLookupUsername = username;
         
         mResultData = new ServerInfo();
     }
@@ -155,7 +151,6 @@ public class GetServerInfoOperation extends RemoteOperation {
     public static class ServerInfo {
         public OwnCloudVersion mVersion = null;
         public String mBaseUrl = "";
-        public String mLookupUrl = "";
         public AuthenticationMethod mAuthMethod = AuthenticationMethod.UNKNOWN;
         public boolean mIsSslConn = false;
     }

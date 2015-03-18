@@ -74,8 +74,6 @@ public class OperationsService extends Service {
     
     public static final String EXTRA_ACCOUNT = "ACCOUNT";
     public static final String EXTRA_SERVER_URL = "SERVER_URL";
-    public static final String EXTRA_LOOKUP_URL = "LOOKUP_URL";
-    public static final String EXTRA_LOOKUP_USERNAME = "LOOKUP_USERNAME";
     public static final String EXTRA_OAUTH2_QUERY_PARAMETERS = "OAUTH2_QUERY_PARAMETERS";
     public static final String EXTRA_REMOTE_PATH = "REMOTE_PATH";
     public static final String EXTRA_SEND_INTENT = "SEND_INTENT";
@@ -539,8 +537,6 @@ public class OperationsService extends Service {
             } else {
                 Account account = operationIntent.getParcelableExtra(EXTRA_ACCOUNT);
                 String serverUrl = operationIntent.getStringExtra(EXTRA_SERVER_URL);
-                String lookupUrl = operationIntent.getStringExtra(EXTRA_LOOKUP_URL);
-                String lookupUsername = operationIntent.getStringExtra(EXTRA_LOOKUP_USERNAME);
                 String username = operationIntent.getStringExtra(EXTRA_USERNAME);
                 String password = operationIntent.getStringExtra(EXTRA_PASSWORD);
                 String authToken = operationIntent.getStringExtra(EXTRA_AUTH_TOKEN);
@@ -573,7 +569,7 @@ public class OperationsService extends Service {
                     
                 } else if (action.equals(ACTION_GET_SERVER_INFO)) { 
                     // check OC server and get basic information from it
-                    operation = new GetServerInfoOperation(serverUrl, lookupUrl, lookupUsername, OperationsService.this);
+                    operation = new GetServerInfoOperation(serverUrl, OperationsService.this);
                 } else if (action.equals(ACTION_OAUTH2_GET_ACCESS_TOKEN)) {
                     /// GET ACCESS TOKEN to the OAuth server
                     String oauth2QueryParameters =

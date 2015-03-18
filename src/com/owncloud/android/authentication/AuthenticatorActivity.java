@@ -87,6 +87,22 @@ import com.owncloud.android.ui.dialog.SslUntrustedCertDialog;
 import com.owncloud.android.ui.dialog.SslUntrustedCertDialog.OnSslUntrustedCertListener;
 import com.owncloud.android.utils.DisplayUtils;
 
+import org.json.JSONObject;
+import org.json.JSONException;
+import java.io.*;
+import android.os.AsyncTask;
+import org.apache.http.client.HttpClient;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.NameValuePair;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.ClientProtocolException;
+import java.util.List;
+import java.util.ArrayList;
+
+
 /**
  * This Activity is used to add an ownCloud account to the App
  * 
@@ -163,6 +179,8 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
 
     private GetServerInfoOperation.ServerInfo mServerInfo = 
             new GetServerInfoOperation.ServerInfo();
+
+    private String mLookupUrl = "";
 
     // when lookup URL is set, use this to detect changes to username
     private String mUsername = "";
@@ -339,11 +357,8 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
                 }
             } else {
                 mServerInfo.mBaseUrl = getString(R.string.server_url).trim();
-                mServerInfo.mLookupUrl = getString(R.string.server_lookup_url).trim();
-                if ( !mServerInfo.mLookupUrl.isEmpty() )
-                    mServerInfo.mIsSslConn = mServerInfo.mLookupUrl.startsWith("https://");
-                else
-                    mServerInfo.mIsSslConn = mServerInfo.mBaseUrl.startsWith("https://");
+                mServerInfo.mIsSslConn = mServerInfo.mBaseUrl.startsWith("https://");
+                mLookupUrl = getString(R.string.server_lookup_url).trim();
             }
         } else {
             mServerStatusText = savedInstanceState.getInt(KEY_SERVER_STATUS_TEXT);
@@ -355,7 +370,7 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
             // TODO parcelable
             mServerInfo.mIsSslConn = savedInstanceState.getBoolean(KEY_IS_SSL_CONN);
             mServerInfo.mBaseUrl = savedInstanceState.getString(KEY_HOST_URL_TEXT);
-            mServerInfo.mLookupUrl = savedInstanceState.getString(KEY_LOOKUP_URL_TEXT);
+            mLookupUrl = savedInstanceState.getString(KEY_LOOKUP_URL_TEXT);
             mUsername = savedInstanceState.getString(KEY_USERNAME_TEXT);
             String ocVersion = savedInstanceState.getString(KEY_OC_VERSION);
             if (ocVersion != null) {
@@ -370,6 +385,8 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
         mHostUrlInput = (EditText) findViewById(R.id.hostUrlInput);
         // Convert IDN to Unicode
         mHostUrlInput.setText(DisplayUtils.convertIdn(mServerInfo.mBaseUrl, false));
+
+        mUsernameInput = (EditText) findViewById(R.id.account_username);
         mUsernameInput.setText(DisplayUtils.convertIdn(mUsername, false));
         if (mAction != ACTION_CREATE) {
             /// lock things that should not change
@@ -579,7 +596,7 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
         outState.putBoolean(KEY_SERVER_VALID, mServerIsValid);
         outState.putBoolean(KEY_IS_SSL_CONN, mServerInfo.mIsSslConn);
         outState.putString(KEY_HOST_URL_TEXT, mServerInfo.mBaseUrl);
-        outState.putString(KEY_LOOKUP_URL_TEXT, mServerInfo.mLookupUrl);
+        outState.putString(KEY_LOOKUP_URL_TEXT, mLookupUrl);
         outState.putString(KEY_USERNAME_TEXT, mUsername);
         if (mServerInfo.mVersion != null) {
             outState.putString(KEY_OC_VERSION, mServerInfo.mVersion.getVersion());
@@ -628,6 +645,7 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
         // bound here to avoid spurious changes triggered by Android on device rotations
         mHostUrlInput.setOnFocusChangeListener(this);
         mHostUrlInput.addTextChangedListener(mHostUrlInputWatcher);
+        mUsernameInput.setOnFocusChangeListener(this);
         
         if (mNewCapturedUriFromOAuth2Redirection != null) {
             getOAuth2AccessTokenFromCapturedRedirection();            
@@ -717,10 +735,57 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
 
         } else if (view.getId() == R.id.account_password) {
             onPasswordFocusChanged((TextView) view, hasFocus);
-        } else if (view.getId() == R.id.account_username && !mServerInfo.mLookupUrl.isEmpty() ) {
-            if (!hasFocus && !mUsernameInput.getText().toString().equals(mUsername))
-                checkOcServer();
+        } else if (view.getId() == R.id.account_username && !mLookupUrl.isEmpty() ) {
+            if (!hasFocus && !mUsernameInput.getText().toString().equals(mUsername)) {
+                mUsername = mUsernameInput.getText().toString();
+                lookupDomain();
+            }
         }
+    }
+
+    private void lookupDomain() {
+        AsyncTask<String, Void, String> task = new AsyncTask<String, Void, String>() {
+            @Override
+            protected String doInBackground(String... urls) {
+                String url = urls[0];
+
+                HttpClient httpclient = new DefaultHttpClient();
+                HttpPost httppost = new HttpPost(url);
+
+                try {
+                    List<NameValuePair> nameValuePairs = new ArrayList<NameValuePair>(2);
+                    nameValuePairs.add(new BasicNameValuePair("request", "domain"));
+                    nameValuePairs.add(new BasicNameValuePair("username", DisplayUtils.convertIdn(mUsernameInput.getText().toString(), true)));
+                    httppost.setEntity(new UrlEncodedFormEntity(nameValuePairs));
+                    httppost.addHeader("Accept", "application/json");
+
+                    // Execute HTTP Post Request
+                    HttpResponse response = httpclient.execute(httppost);
+                    InputStream content = response.getEntity().getContent();
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(content));
+                    StringBuilder sb = new StringBuilder();
+                    String line = null;
+                    while ( (line = reader.readLine()) != null)
+                        sb.append(line + "\n");
+                    return sb.toString();
+                } catch (ClientProtocolException e) {
+                    return "Unable to retrieve web page. URL may be invalid.";
+                } catch (IOException e) {
+                    return "Unable to retrieve web page. URL may be invalid.";
+                }
+            }
+
+            @Override
+            protected void onPostExecute(String result) {
+                try {
+                    JSONObject obj = new JSONObject(result);
+                    String domain = obj.getString("domain");
+                    mHostUrlInput.setText(DisplayUtils.convertIdn(domain, false));
+                } catch (JSONException ex) {}
+                checkOcServer();
+            }
+        };
+        task.execute(mLookupUrl);
     }
 
     /**
@@ -765,14 +830,6 @@ SsoWebViewClientListener, OnSslUntrustedCertListener {
             getServerInfoIntent.putExtra(
                 OperationsService.EXTRA_SERVER_URL, 
                 normalizeUrlSuffix(uri)
-            );
-            getServerInfoIntent.putExtra(
-                OperationsService.EXTRA_LOOKUP_URL, 
-                normalizeUrlSuffix(mServerInfo.mLookupUrl)
-            );
-            getServerInfoIntent.putExtra(
-                OperationsService.EXTRA_LOOKUP_USERNAME, 
-                mUsernameInput.getText().toString()
             );
             if (mOperationsServiceBinder != null) {
                 mWaitingForOpId = mOperationsServiceBinder.queueNewOperation(getServerInfoIntent);
